@@ -34,7 +34,7 @@ ChatGPT Collapsible Turns is a Chrome extension that transforms how you interact
 ## 🚀 Installation
 
 ### From Chrome Web Store (Recommended)
-1. Visit the [Chrome Web Store page](#) *(link coming soon)*
+1. Visit the [Chrome Web Store page](https://chromewebstore.google.com/detail/ppopmpkdgbomoiiddedconioikanenfp?utm_source=item-share-cb)
 2. Click "Add to Chrome"
 3. Navigate to [ChatGPT](https://chatgpt.com) and start using!
 
