@@ -386,8 +386,8 @@ try {
 
 // ======================== Boot ==============================================
 (async function init() {
-  ensureToggleButton();
   await loadSettings();
+  ensureToggleButton();
 
   const ready = () => !!document.querySelector("article[data-turn]");
   const go = () => {
