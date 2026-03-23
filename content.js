@@ -4,6 +4,7 @@ const STATE_PREFIX = "gptc-open:"; // per-turn open/closed (session)
 const ENABLED_KEY = "gptcEnabled"; // global on/off (sync storage)
 const AUTO_COLLAPSE_KEY = "gptcAutoCollapse"; // auto-collapse setting
 const KEEP_EXPANDED_KEY = "gptcKeepExpanded"; // how many to keep expanded
+const TURN_SELECTOR = "section[data-turn]"; // Selector for message turn containers (update here if ChatGPT changes markup)
 
 // ======================== State ==============================================
 let enabled = true;
@@ -13,14 +14,17 @@ let observer = null;
 let rescanIntervalId = null;
 let observerTimeout = null;
 let userExpandedIds = new Set(); // Track manually expanded messages
+const detachedContent = new WeakMap(); // article element -> DocumentFragment of removed DOM nodes
+let ownMutation = false; // true while we are making our own DOM changes
 
 // ======================== Utilities ==========================================
 function getTurnId(article) {
+  // Always return the cached value — resolving live queries only before first detachment
+  if (article.dataset.gptcId) return article.dataset.gptcId;
   const msgId = article.querySelector("[data-message-id]")?.getAttribute("data-message-id");
-  if (msgId) return msgId;
-  const turnId = article.getAttribute("data-turn-id");
-  if (turnId) return turnId;
-  return `dom-index-${[...document.querySelectorAll("article[data-turn]")].indexOf(article)}`;
+  const id = msgId || article.getAttribute("data-turn-id") || `gptc-${Math.random().toString(36).slice(2, 9)}`;
+  article.dataset.gptcId = id; // cache immediately so detachment can't change the result
+  return id;
 }
 
 function getRole(article) {
@@ -43,11 +47,42 @@ function saveOpenState(id, isOpen) {
   sessionStorage.setItem(STATE_PREFIX + id, isOpen ? "1" : "0");
 }
 
+// ======================== DOM Virtualization =================================
+// Run fn() while telling the observer to ignore our own mutations
+function withoutObserver(fn) {
+  ownMutation = true;
+  fn();
+  // Reset after microtasks flush (MutationObserver callbacks fire as microtasks)
+  setTimeout(() => { ownMutation = false; }, 0);
+}
+
+function detachContent(article) {
+  if (detachedContent.has(article)) return; // already detached
+  // Never detach the last (potentially streaming) turn
+  const allTurns = document.querySelectorAll(TURN_SELECTOR);
+  if (article === allTurns[allTurns.length - 1]) return;
+  // Capture a fresh preview before removing content, in case the cached value is stale
+  const fresh = extractPreviewText(article);
+  if (fresh !== "(empty message)") {
+    article.dataset.gptcPreview = fresh;
+  }
+  const frag = document.createDocumentFragment();
+  while (article.firstChild) frag.appendChild(article.firstChild);
+  detachedContent.set(article, frag);
+}
+
+function reattachContent(article) {
+  const frag = detachedContent.get(article);
+  if (!frag) return;
+  article.appendChild(frag);
+  detachedContent.delete(article);
+}
+
 // ======================== Performance: Auto-collapse Old ====================
 function autoCollapseOld() {
   if (!autoCollapseEnabled) return;
 
-  const articles = [...document.querySelectorAll("article[data-turn]")];
+  const articles = [...document.querySelectorAll(TURN_SELECTOR)];
   if (articles.length <= keepLastNExpanded) return;
 
   const toCollapse = articles.slice(0, -keepLastNExpanded);
@@ -61,6 +96,7 @@ function autoCollapseOld() {
     if (!article.classList.contains("gptc-collapsed")) {
       article.classList.add("gptc-collapsed");
       saveOpenState(id, false);
+      detachContent(article);
 
       const row = article.previousElementSibling;
       if (row?.classList?.contains("gptc-summary-row")) {
@@ -81,7 +117,20 @@ function createOrUpdateSummaryRow(article) {
 
   const role = getRole(article);
   const id = getTurnId(article);
-  const preview = extractPreviewText(article);
+
+  // Use cached preview when content is detached, otherwise extract and cache it
+  let preview;
+  if (detachedContent.has(article)) {
+    preview = article.dataset.gptcPreview || "(no preview)";
+  } else {
+    preview = extractPreviewText(article);
+    // Only cache real content — don't overwrite a good cached value with a temporary empty state
+    if (preview !== "(empty message)") {
+      article.dataset.gptcPreview = preview;
+    } else if (article.dataset.gptcPreview) {
+      preview = article.dataset.gptcPreview;
+    }
+  }
 
   // initial state: assistant open, user collapsed (or from session)
   let open = loadOpenState(id);
@@ -94,93 +143,133 @@ function createOrUpdateSummaryRow(article) {
   if (!article.id) article.id = `gptc-article-${id}`;
 
   let row = article.previousElementSibling;
-  if (!hasSummaryRow(article)) {
+  const rowExists = hasSummaryRow(article);
+
+  if (rowExists) {
+    // Only update what actually changed — avoid full rebuild on every observer tick
+    const expandedVal = open ? "true" : "false";
+    if (row.getAttribute("aria-expanded") !== expandedVal) {
+      row.setAttribute("aria-expanded", expandedVal);
+    }
+    const previewEl = row.querySelector(".gptc-preview");
+    if (previewEl && previewEl.textContent !== preview) {
+      previewEl.textContent = preview;
+    }
+  } else {
     row = document.createElement("div");
     row.className = "gptc-summary-row";
     row.setAttribute("role", "button");
     row.tabIndex = 0;
     article.parentNode.insertBefore(row, article);
+
+    row.setAttribute("aria-controls", article.id);
+    row.setAttribute("aria-expanded", open ? "true" : "false");
+
+    const rolePill = document.createElement("span");
+    rolePill.className = "gptc-role";
+    const roleIcon = document.createElement("span");
+    roleIcon.className = "gptc-role-icon";
+    roleIcon.innerHTML = role === "assistant"
+      ? '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" viewBox="0 0 256 256"><path d="M200,48H136V16a8,8,0,0,0-16,0V48H56A32,32,0,0,0,24,80V192a32,32,0,0,0,32,32H200a32,32,0,0,0,32-32V80A32,32,0,0,0,200,48Zm16,144a16,16,0,0,1-16,16H56a16,16,0,0,1-16-16V80A16,16,0,0,1,56,64H200a16,16,0,0,1,16,16Zm-52-56H92a28,28,0,0,0,0,56h72a28,28,0,0,0,0-56Zm-24,16v24H116V152ZM80,164a12,12,0,0,1,12-12h8v24H92A12,12,0,0,1,80,164Zm84,12h-8V152h8a12,12,0,0,1,0,24ZM72,108a12,12,0,1,1,12,12A12,12,0,0,1,72,108Zm88,0a12,12,0,1,1,12,12A12,12,0,0,1,160,108Z"></path></svg>'
+      : '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" viewBox="0 0 256 256"><path d="M230.92,212c-15.23-26.33-38.7-45.21-66.09-54.16a72,72,0,1,0-73.66,0C63.78,166.78,40.31,185.66,25.08,212a8,8,0,1,0,13.85,8c18.84-32.56,52.14-52,89.07-52s70.23,19.44,89.07,52a8,8,0,1,0,13.85-8ZM72,96a56,56,0,1,1,56,56A56.06,56.06,0,0,1,72,96Z"></path></svg>';
+    rolePill.append(roleIcon, role);
+
+    const previewSpan = document.createElement("span");
+    previewSpan.className = "gptc-preview";
+    previewSpan.textContent = preview;
+
+    const chevron = document.createElement("span");
+    chevron.className = "gptc-chevron";
+    chevron.innerHTML =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6l-6 6z"/></svg>';
+
+    row.append(rolePill, previewSpan, chevron);
+
+    const toggle = () => {
+      withoutObserver(() => {
+        const willCollapse = !article.classList.contains("gptc-collapsed");
+        if (!willCollapse) reattachContent(article);
+        article.classList.toggle("gptc-collapsed");
+        const isOpen = !willCollapse;
+        if (willCollapse) detachContent(article);
+
+        row.setAttribute("aria-expanded", isOpen ? "true" : "false");
+        saveOpenState(id, isOpen);
+
+        if (isOpen) {
+          userExpandedIds.add(id);
+        } else {
+          userExpandedIds.delete(id);
+        }
+      });
+    };
+
+    row.onclick = toggle;
+    row.onkeydown = (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        toggle();
+      }
+    };
   }
 
-  row.setAttribute("aria-controls", article.id);
-  row.setAttribute("aria-expanded", open ? "true" : "false");
-  row.innerHTML = "";
-
-  const rolePill = document.createElement("span");
-  rolePill.className = "gptc-role";
-  rolePill.textContent = role;
-
-  const previewSpan = document.createElement("span");
-  previewSpan.className = "gptc-preview";
-  previewSpan.textContent = preview;
-
-  const chevron = document.createElement("span");
-  chevron.className = "gptc-chevron";
-  chevron.innerHTML =
-    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6l-6 6z"/></svg>';
-
-  row.append(rolePill, previewSpan, chevron);
-
-  const toggle = () => {
-    const isOpen = article.classList.toggle("gptc-collapsed") === false; // collapsed=false -> open
-    row.setAttribute("aria-expanded", isOpen ? "true" : "false");
-    saveOpenState(id, isOpen);
-
-    // Track user-expanded messages
-    if (isOpen) {
-      userExpandedIds.add(id);
-    } else {
-      userExpandedIds.delete(id);
-    }
-  };
-
-  row.onclick = toggle;
-  row.onkeydown = (e) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      toggle();
-    }
-  };
+  // Sync DOM virtualization with current open/collapsed state
+  if (!open) {
+    detachContent(article); // no-op if already detached
+  } else {
+    reattachContent(article); // no-op if not detached
+  }
 }
 
 // Scan existing articles without moving them
 function scanExisting() {
-  document.querySelectorAll("article[data-turn]").forEach(createOrUpdateSummaryRow);
+  document.querySelectorAll(TURN_SELECTOR).forEach(createOrUpdateSummaryRow);
   autoCollapseOld();
 }
 
 function removeAllSummaryRows() {
-  document.querySelectorAll(".gptc-summary-row").forEach((el) => el.remove());
-  document.querySelectorAll("article[data-turn].gptc-collapsed").forEach((a) => a.classList.remove("gptc-collapsed"));
+  withoutObserver(() => {
+    document.querySelectorAll(TURN_SELECTOR).forEach((article) => {
+      reattachContent(article);
+    });
+    document.querySelectorAll(".gptc-summary-row").forEach((el) => el.remove());
+    document.querySelectorAll(`${TURN_SELECTOR}.gptc-collapsed`).forEach((a) => a.classList.remove("gptc-collapsed"));
+  });
 }
 
 // ======================== Bulk Actions =======================================
 function collapseAll() {
-  userExpandedIds.clear(); // Clear user expansions when collapsing all
-  document.querySelectorAll("article[data-turn]").forEach((article) => {
-    const id = getTurnId(article);
-    article.classList.add("gptc-collapsed");
-    saveOpenState(id, false);
+  withoutObserver(() => {
+    userExpandedIds.clear();
+    document.querySelectorAll(TURN_SELECTOR).forEach((article) => {
+      const id = getTurnId(article);
+      article.classList.add("gptc-collapsed");
+      saveOpenState(id, false);
+      detachContent(article);
 
-    const row = article.previousElementSibling;
-    if (row?.classList?.contains("gptc-summary-row")) {
-      row.setAttribute("aria-expanded", "false");
-    }
+      const row = article.previousElementSibling;
+      if (row?.classList?.contains("gptc-summary-row")) {
+        row.setAttribute("aria-expanded", "false");
+      }
+    });
   });
 }
 
 function expandAll() {
-  const articles = document.querySelectorAll("article[data-turn]");
-  articles.forEach((article) => {
-    const id = getTurnId(article);
-    article.classList.remove("gptc-collapsed");
-    saveOpenState(id, true);
-    userExpandedIds.add(id); // Mark all as user-expanded
+  withoutObserver(() => {
+    const articles = document.querySelectorAll(TURN_SELECTOR);
+    articles.forEach((article) => {
+      const id = getTurnId(article);
+      reattachContent(article);
+      article.classList.remove("gptc-collapsed");
+      saveOpenState(id, true);
+      userExpandedIds.add(id);
 
-    const row = article.previousElementSibling;
-    if (row?.classList?.contains("gptc-summary-row")) {
-      row.setAttribute("aria-expanded", "true");
-    }
+      const row = article.previousElementSibling;
+      if (row?.classList?.contains("gptc-summary-row")) {
+        row.setAttribute("aria-expanded", "true");
+      }
+    });
   });
 }
 
@@ -189,24 +278,26 @@ function startObserving() {
   if (observer) return;
 
   observer = new MutationObserver((mutations) => {
-    if (observerTimeout) return;
+    if (ownMutation || observerTimeout) return;
 
     observerTimeout = setTimeout(() => {
-      for (const m of mutations) {
-        // New turns arrive as added nodes or text updates
-        m.addedNodes?.forEach((node) => {
-          if (node.nodeType !== 1) return;
-          if (node.matches?.("article[data-turn]")) createOrUpdateSummaryRow(node);
-          node.querySelectorAll?.("article[data-turn]").forEach(createOrUpdateSummaryRow);
-        });
+      withoutObserver(() => {
+        for (const m of mutations) {
+          // New turns arrive as added nodes or text updates
+          m.addedNodes?.forEach((node) => {
+            if (node.nodeType !== 1) return;
+            if (node.matches?.(TURN_SELECTOR)) createOrUpdateSummaryRow(node);
+            node.querySelectorAll?.(TURN_SELECTOR).forEach(createOrUpdateSummaryRow);
+          });
 
-        // If message text changes inside an article, refresh its preview
-        if (m.type === "childList" || m.type === "subtree") {
-          const a = m.target?.closest?.("article[data-turn]");
-          if (a) createOrUpdateSummaryRow(a);
+          // If message text changes inside an article, refresh its preview
+          if (m.type === "childList") {
+            const a = m.target?.closest?.(TURN_SELECTOR);
+            if (a) createOrUpdateSummaryRow(a);
+          }
         }
-      }
-      autoCollapseOld();
+        autoCollapseOld();
+      });
       observerTimeout = null;
     }, 100); // Throttle to every 100ms
   });
@@ -215,10 +306,15 @@ function startObserving() {
 
   if (!rescanIntervalId) {
     rescanIntervalId = setInterval(() => {
-      if (enabled) {
-        scanExisting();
+      if (!enabled) return;
+      // Use idle callback so the rescan never blocks user interaction
+      const run = () => withoutObserver(() => scanExisting());
+      if (typeof requestIdleCallback === "function") {
+        requestIdleCallback(run, { timeout: 2000 });
+      } else {
+        run();
       }
-    }, 2000);
+    }, 10000); // 10s is plenty — the observer handles real-time updates
   }
 }
 
@@ -389,7 +485,7 @@ try {
   await loadSettings();
   ensureToggleButton();
 
-  const ready = () => !!document.querySelector("article[data-turn]");
+  const ready = () => !!document.querySelector(TURN_SELECTOR);
   const go = () => {
     if (enabled) {
       scanExisting();
