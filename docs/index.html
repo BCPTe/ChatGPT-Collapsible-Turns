@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ChatGPT Collapsible Turns</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        line-height: 1.6;
+        color: #333;
+        background: #f5f5f5;
+        padding: 20px;
+      }
+
+      .container {
+        max-width: 800px;
+        margin: 0 auto;
+        background: white;
+        padding: 40px;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      }
+
+      /* Header */
+      .header {
+        border-bottom: 3px solid #10b981;
+        padding-bottom: 20px;
+        margin-bottom: 30px;
+      }
+
+      .header h1 {
+        color: #1a1a1a;
+        font-size: 2rem;
+      }
+
+      .header .tagline {
+        color: #4a5568;
+        font-size: 1.05rem;
+        margin-bottom: 12px;
+      }
+
+      .badge {
+        display: inline-block;
+        background: #10b981;
+        color: white;
+        font-size: 0.75rem;
+        font-weight: 600;
+        padding: 3px 10px;
+        border-radius: 9999px;
+        letter-spacing: 0.02em;
+      }
+
+      /* Sections */
+      h2 {
+        color: #2d3748;
+        font-size: 1.5rem;
+        margin-top: 36px;
+        margin-bottom: 15px;
+      }
+
+      p {
+        margin-bottom: 8px;
+        color: #4a5568;
+      }
+
+      ul {
+        margin: 15px 0;
+        padding-left: 30px;
+      }
+
+      li {
+        margin-bottom: 8px;
+        color: #4a5568;
+      }
+
+      strong {
+        color: #1a1a1a;
+        font-weight: 600;
+      }
+
+      a {
+        color: #10b981;
+        text-decoration: none;
+      }
+
+      a:hover {
+        text-decoration: underline;
+      }
+
+      /* Install button */
+      .install-btn {
+        display: inline-block;
+        background: #10b981;
+        color: white;
+        font-size: 1rem;
+        font-weight: 600;
+        padding: 12px 28px;
+        border-radius: 8px;
+        margin-top: 8px;
+        transition: background 0.15s ease;
+      }
+
+      .install-btn:hover {
+        background: #059669;
+        text-decoration: none;
+      }
+
+      /* Changelog */
+      .changelog-entry {
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 16px;
+      }
+
+      .changelog-entry:first-child {
+        border-color: #10b981;
+        background: #f0fdf4;
+      }
+
+      .changelog-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+
+      .changelog-version {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #1a1a1a;
+      }
+
+      .changelog-date {
+        font-size: 0.85rem;
+        color: #9ca3af;
+      }
+
+      .tag {
+        display: inline-block;
+        font-size: 0.7rem;
+        font-weight: 600;
+        padding: 2px 8px;
+        border-radius: 9999px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+
+      .tag-latest {
+        background: #d1fae5;
+        color: #065f46;
+      }
+      .tag-fix {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+      .tag-minor {
+        background: #f3f4f6;
+        color: #6b7280;
+      }
+
+      /* Links section */
+      .links-grid {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin-top: 8px;
+      }
+
+      .link-card {
+        flex: 1;
+        min-width: 180px;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 16px 20px;
+        color: #2d3748;
+        transition:
+          border-color 0.15s ease,
+          box-shadow 0.15s ease;
+      }
+
+      .link-card:hover {
+        border-color: #10b981;
+        box-shadow: 0 2px 6px rgba(16, 185, 129, 0.15);
+        text-decoration: none;
+        color: #2d3748;
+      }
+
+      .link-card .link-title {
+        font-weight: 600;
+        color: #10b981;
+        margin-bottom: 4px;
+      }
+
+      .link-card .link-desc {
+        font-size: 0.85rem;
+        color: #9ca3af;
+      }
+
+      /* Footer */
+      .footer {
+        margin-top: 40px;
+        padding-top: 20px;
+        border-top: 1px solid #e5e7eb;
+        text-align: center;
+        color: #9ca3af;
+        font-size: 0.9rem;
+      }
+
+      @media (max-width: 768px) {
+        .container {
+          padding: 20px;
+        }
+        .header h1 {
+          font-size: 1.5rem;
+        }
+        h2 {
+          font-size: 1.3rem;
+        }
+        .changelog-header {
+          flex-wrap: wrap;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <!-- Header -->
+      <div class="header">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+          <img src="icon.png" alt="" width="32" height="32" />
+          <h1>ChatGPT Collapsible Turns</h1>
+        </div>
+        <p class="tagline">Collapse and expand conversation turns for a cleaner, faster ChatGPT experience.</p>
+        <span class="badge">v1.2.3</span>
+      </div>
+
+      <!-- Features -->
+      <h2>Features</h2>
+      <ul>
+        <li><strong>Collapsible message rows</strong> — click any summary to expand or collapse a turn</li>
+        <li><strong>DOM virtualization</strong> — collapsed content is physically removed from the DOM, not just hidden, for real memory and render savings</li>
+        <li><strong>Auto-collapse</strong> — keeps only the last 10 messages expanded automatically</li>
+        <li><strong>Bulk actions</strong> — collapse or expand all messages from the toolbar</li>
+        <li><strong>Light &amp; dark mode</strong> — syncs with ChatGPT's own theme switcher</li>
+        <li><strong>Persistent state</strong> — collapse preferences are remembered during your session</li>
+        <li><strong>No data collection</strong> — everything stays local in your browser</li>
+      </ul>
+
+      <!-- Install -->
+      <h2>Installation</h2>
+      <p>Available on the Chrome Web Store — one click to install, no sign-in required.</p>
+      <a class="install-btn" href="https://chromewebstore.google.com/detail/ppopmpkdgbomoiiddedconioikanenfp" target="_blank"> Add to Chrome </a>
+
+      <!-- Changelog -->
+      <h2>Changelog</h2>
+
+      <div class="changelog-entry">
+        <div class="changelog-header">
+          <span class="changelog-version">v1.2.3</span>
+          <span class="tag tag-latest">Latest</span>
+          <span class="changelog-date">March 2026</span>
+        </div>
+        <ul>
+          <li>Updated selector from <code>article</code> to <code>section[data-turn]</code> for ChatGPT's March 2026 DOM changes</li>
+          <li>
+            DOM virtualization: collapsed turns are physically detached into a <code>DocumentFragment</code>, cutting memory usage and eliminating render work for hidden content
+          </li>
+          <li>Light &amp; dark mode via CSS custom properties, synced to ChatGPT's <code>html.dark</code> / <code>html.light</code> class as well as system preference</li>
+          <li>Role icons (robot for assistant, person for user) in summary rows</li>
+          <li>Stable turn ID caching prevents expand/collapse loop when message IDs shift</li>
+          <li>Observer self-mutation guard stops the extension's own DOM changes from re-triggering the observer</li>
+          <li>Rescan interval increased to 10 s and deferred via <code>requestIdleCallback</code> to eliminate periodic main-thread jank</li>
+        </ul>
+      </div>
+
+      <div class="changelog-entry">
+        <div class="changelog-header">
+          <span class="changelog-version">v1.2.2</span>
+          <span class="tag tag-fix">Bug fix</span>
+          <span class="changelog-date">November 2025</span>
+        </div>
+        <ul>
+          <li>Fixed extension showing "ON" at boot while the toolbar was not appearing</li>
+        </ul>
+      </div>
+
+      <div class="changelog-entry">
+        <div class="changelog-header">
+          <span class="changelog-version">v1.2.1</span>
+          <span class="tag tag-minor">Minor</span>
+          <span class="changelog-date">November 2025</span>
+        </div>
+        <ul>
+          <li>Minor changes</li>
+        </ul>
+      </div>
+
+      <div class="changelog-entry">
+        <div class="changelog-header">
+          <span class="changelog-version">v1.2.0</span>
+          <span class="changelog-date">November 2025</span>
+        </div>
+        <ul>
+          <li>First public release</li>
+          <li>Collapsible turns with preview text and role badge</li>
+          <li>Auto-collapse: keeps last 10 messages expanded</li>
+          <li>Bulk collapse / expand all from the top toolbar</li>
+          <li>Persistent collapse state via <code>sessionStorage</code></li>
+          <li>Throttled MutationObserver to reduce CPU usage during streaming</li>
+        </ul>
+      </div>
+
+      <!-- Links -->
+      <h2>Links</h2>
+      <div class="links-grid">
+        <a class="link-card" href="privacy.html">
+          <div class="link-title">Privacy Policy</div>
+          <div class="link-desc">How your data is handled</div>
+        </a>
+        <a class="link-card" href="https://github.com/BCPTe/ChatGPT-Collapsible-Turns" target="_blank">
+          <div class="link-title">GitHub</div>
+          <div class="link-desc">Source code and documentation</div>
+        </a>
+        <a class="link-card" href="https://github.com/BCPTe/ChatGPT-Collapsible-Turns/issues" target="_blank">
+          <div class="link-title">Report an Issue</div>
+          <div class="link-desc">Bug reports and feature requests</div>
+        </a>
+      </div>
+
+      <div class="footer">
+        <p>&copy; <span id="gptc-year"></span> ChatGPT Collapsible Turns. All rights reserved.</p>
+        <p>Licensed under the MIT License</p>
+        <p>Made with ❤️ by BCPTe</p>
+      </div>
+    </div>
+    <script>
+      document.getElementById("gptc-year").textContent = new Date().getFullYear();
+    </script>
+  </body>
+</html>
